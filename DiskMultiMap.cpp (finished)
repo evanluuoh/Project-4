@@ -16,12 +16,10 @@ BinaryFile::Offset DiskMultiMap::findBucketOffset(const std::string& key)
 {
 	hash<string> hashFunction;
 	size_t hashResult = hashFunction(key);  //returns a size_t value, now we have to convert into an offset
-	cout << hashResult << endl;
 
 	Header header;
 	bf.read(header, 0);
 	hashResult = hashResult % header.numBuckets;  //hashResult is now a bucket NUMBER, to convert into offset we match the bucket number with its index
-	cout << hashResult << endl;
 
 	BinaryFile::Offset BucketOffset = sizeof(Header) + (hashResult * sizeof(Bucket));
 	return BucketOffset;
@@ -50,14 +48,14 @@ DiskMultiMap::Iterator& DiskMultiMap::Iterator::operator++()
 	if (isValid())
 	{
 		Node currNode;
-		m_file->read(currNode, m_offset);
+		m_file->read(currNode, m_offset);  //grab currNode at the iterator's current offset
 		Node nextNode;
-		for (BinaryFile::Offset i = m_offset; i != 0; i = currNode.next)
+		for (BinaryFile::Offset i = currNode.next; i != 0; i = nextNode.next)
 		{
-			m_file->read(nextNode, m_offset);
-			if (nextNode.key == currNode.key)
+			m_file->read(nextNode, i);
+			if (strcmp(nextNode.key, currNode.key) == 0)
 			{
-				Iterator it = Iterator(m_file, i);
+				Iterator it(m_file, i);
 				return it;
 			}
 		}
@@ -80,6 +78,7 @@ MultiMapTuple DiskMultiMap::Iterator::operator*()
 	result.key = currNode.key;
 	result.value = currNode.value;
 	result.context = currNode.context;
+	return result;
 }
 
 
@@ -98,6 +97,7 @@ bool DiskMultiMap::createNew(const std::string& filename, unsigned int numBucket
 	bool success = bf.createNew(filename);
 	if (!success)
 		return false;
+	m_filename = filename;
 
 	Header header;
 	header.numBuckets = numBuckets;
@@ -137,7 +137,6 @@ bool DiskMultiMap::insert(const std::string& key, const std::string& value, cons
 
 	Bucket b;  //find the bucket that will hold key
 	BinaryFile::Offset BucketOffset = findBucketOffset(key);
-	cout << BucketOffset << endl;
 	bf.read(b, BucketOffset);  //get the bucket at BucketOffset
 
 	Node newNode;
@@ -147,12 +146,12 @@ bool DiskMultiMap::insert(const std::string& key, const std::string& value, cons
 	newNode.next = b.head;  //set newNode's next to the current head
 
 	Header header;
-	bf.write(header, 0);
+	bf.read(header, 0);
 	if (header.spaceHead == 0)
 	{
 		b.head = bf.fileLength();  //the new head offset should point to newNode's current offset
 		bf.write(newNode, bf.fileLength());  //write the newNode into the list at the last open offset
-		bf.write(b.head, 0);  //update the head variable to point to the new offset in the list
+		bf.write(b.head, BucketOffset);  //update the head variable to point to the new offset in the list
 		return true;
 	}
 	else
@@ -162,8 +161,8 @@ bool DiskMultiMap::insert(const std::string& key, const std::string& value, cons
 		bf.write(newNode, header.spaceHead);  //overwrite the newNode into the first available open space
 		b.head = header.spaceHead;  //set head equal to newNode's offset
 		header.spaceHead = filledNode.next;  //set spaceHead equal to the next "deleted" node
-		bf.write(b.head, 0);
-		bf.write(header.spaceHead, 4);
+		bf.write(b.head, BucketOffset);
+		bf.write(header, 0);
 		return true;
 	}
 }
@@ -192,7 +191,6 @@ int DiskMultiMap::erase(const std::string& key, const std::string& value, const 
 {
 	Bucket b;
 	BinaryFile::Offset BucketOffset = findBucketOffset(key);
-	cout << BucketOffset << endl;
 	bf.read(b, BucketOffset);  //get the bucket at BucketOffset
 
 	Header h;
@@ -236,7 +234,24 @@ int DiskMultiMap::erase(const std::string& key, const std::string& value, const 
 
 int main()
 {
-	DiskMultiMap d;
-	d.createNew("temp", 10);
-	d.insert("ke", "a", "a");
+	DiskMultiMap x;
+	x.createNew("myhashtable.dat", 100); // empty, with 100 buckets
+	x.insert("hmm.exe", "pfft.exe", "m52902");
+	x.insert("hmm.exe", "pfft.exe", "m52902");
+	x.insert("hmm.exe", "pfft.exe", "m10001");
+	x.insert("blah.exe", "bletch.exe", "m0003");
+	DiskMultiMap::Iterator it = x.search("hmm.exe");
+	if (it.isValid())
+	{
+		cout << "I found at least 1 item with a key of hmm.exe\n";
+		do
+		{
+			MultiMapTuple m = *it; // get the association
+			cout << "The key is: " << m.key << endl;
+			cout << "The value is: " << m.value << endl;
+			cout << "The context is: " << m.context << endl;
+			cout << endl;
+			++it; // advance iterator to the next matching item
+		} while (it.isValid());
+	}
 }
