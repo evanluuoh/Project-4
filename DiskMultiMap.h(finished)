@@ -2,6 +2,7 @@
 #define DISKMULTIMAP_H_
 
 #include <string>
+#include <list>
 #include "MultiMapTuple.h"
 #include "BinaryFile.h"
 
@@ -13,14 +14,14 @@ public:
 	{
 	public:
 		Iterator();
-		Iterator(BinaryFile* bf, BinaryFile::Offset offset);
+		Iterator(std::list<MultiMapTuple> tupleList);
 		bool isValid() const;
 		Iterator& operator++();
 		MultiMapTuple operator*();
 
 	private:
-		BinaryFile* m_file;
-		BinaryFile::Offset m_offset;
+		std::list<MultiMapTuple> m_list;
+		MultiMapTuple m_value;
 		bool m_valid;
 	};
 
@@ -60,6 +61,7 @@ private:
 	BinaryFile::Offset findBucketOffset(const std::string& key);
 
 	BinaryFile bf;
+	std::string m_filename;
 };
 
 #endif // DISKMULTIMAP_H_
