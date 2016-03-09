@@ -1,6 +1,7 @@
 #include "DiskMultiMap.h"
 #include "MultiMapTuple.h"
 #include <functional>
+#include <list>
 
 using namespace std;
 
@@ -31,11 +32,14 @@ DiskMultiMap::Iterator::Iterator()
 	m_valid = false;
 }
 
-DiskMultiMap::Iterator::Iterator(BinaryFile* bf, BinaryFile::Offset offset)
+DiskMultiMap::Iterator::Iterator(std::list<MultiMapTuple> tupleList)
 {
-	m_valid = true;
-	m_file = bf;
-	m_offset = offset;
+	if (tupleList.empty())
+		m_valid = false;
+	else
+		m_valid = true;
+	m_list = tupleList;
+	m_value = tupleList.front();
 }
 
 bool DiskMultiMap::Iterator::isValid() const
@@ -47,20 +51,14 @@ DiskMultiMap::Iterator& DiskMultiMap::Iterator::operator++()
 {
 	if (isValid())
 	{
-		Node currNode;
-		m_file->read(currNode, m_offset);  //grab currNode at the iterator's current offset
-		Node nextNode;
-		for (BinaryFile::Offset i = currNode.next; i != 0; i = nextNode.next)
+		m_list.pop_front();
+		if (m_list.empty())
 		{
-			m_file->read(nextNode, i);
-			if (strcmp(nextNode.key, currNode.key) == 0)
-			{
-				Iterator it(m_file, i);
-				return it;
-			}
+			m_valid = false;
 		}
-		Iterator it = Iterator();
-		return it;
+		else
+			m_value = m_list.front();
+		return *this;
 	}
 }
 
@@ -73,11 +71,8 @@ MultiMapTuple DiskMultiMap::Iterator::operator*()
 		result.value = "";
 		result.context = "";
 	}
-	Node currNode;
-	m_file->read(currNode, m_offset);
-	result.key = currNode.key;
-	result.value = currNode.value;
-	result.context = currNode.context;
+	else
+		result = m_value;
 	return result;
 }
 
@@ -173,18 +168,29 @@ DiskMultiMap::Iterator DiskMultiMap::search(const std::string& key)
 	BinaryFile::Offset BucketOffset = findBucketOffset(key);  //find the bucket b that is returned by the hash function
 	bf.read(b, BucketOffset);  //b now refers to the bucket that contains all nodes that have key string key
 
+	list<MultiMapTuple> tupleList;
 	Node currNode;
 	for (BinaryFile::Offset i = b.head; i != 0; i = currNode.next)  //i starts at the head of b, and goes to the next node until it hits the end
 	{
 		bf.read(currNode, i);  //update currNode every time you loop through to point to the Node at offset i
 		if (currNode.key == key)
 		{
-			Iterator it = Iterator(&bf, i);  //if the keys match, have the iterator point to currNode's offset
-			return it;
+			MultiMapTuple currTuple;
+			currTuple.key = currNode.key;
+			currTuple.value = currNode.value;
+			currTuple.context = currNode.context;
+			tupleList.push_back(currTuple);
 		}
-		Iterator it = Iterator();  //else, return an invalid default iterator
-		return it;
 	}
+
+	Iterator it;
+	if (tupleList.empty())
+		it = Iterator();
+	else
+	{
+		it = Iterator(tupleList);
+	}
+	return it;
 }
 
 int DiskMultiMap::erase(const std::string& key, const std::string& value, const std::string& context)
@@ -199,21 +205,31 @@ int DiskMultiMap::erase(const std::string& key, const std::string& value, const 
 	if (b.head == 0)
 		return false;
 	Node currNode;
+	BinaryFile::Offset currOffset; //keeps track of currNode's offset
 	bf.read(currNode, b.head); //sets currNode equal to the head node
+	currOffset = b.head;
 	if (stringsMatch(currNode, key, value, context))  //if head's value is equal to data, remove
 	{
 		h.spaceHead = b.head;  //node at head is now the head of the deleted nodes
 		b.head = currNode.next;  //head is now the node after currNode
-		bf.write(b.head, 0);
-		bf.write(h.spaceHead, 4);
+		bf.write(b, BucketOffset);
+		bf.write(h, 0);
 		removed = true;
+		bf.read(currNode, currNode.next);
 	}
 
-	Node nextNode;
+
+	bool incrementCurr = false;
 	for (BinaryFile::Offset i = b.head; i != 0; i = currNode.next)
 	{
-		bf.read(currNode, i);
+		Node nextNode;
 		bf.read(nextNode, currNode.next);
+		if (incrementCurr)
+		{
+			bf.read(currNode, i);
+			currOffset = i;
+		}
+
 		if (currNode.next != 0 && stringsMatch(nextNode, key, value, context))
 		{
 			BinaryFile::Offset temp = h.spaceHead;
@@ -221,11 +237,14 @@ int DiskMultiMap::erase(const std::string& key, const std::string& value, const 
 			h.spaceHead = currNode.next;  //spaceHead is now the offset of nextNode
 			currNode.next = nextNode.next;  //set the node after currNode to be the node after nextNode
 			nextNode.next = temp;  //set nextNode's next offset to the next "deleted" node
-			bf.write(nextNode, temp2);
-			bf.write(currNode, i);
-			bf.write(h.spaceHead, 4);
+			bf.write(nextNode, temp2);  //update the value of the current nextNode
+			bf.write(currNode, currOffset);
+			bf.write(h.spaceHead, 4);  //update the value of spaceHead
 			removed = true;
+			incrementCurr = false;
 		}
+		else
+			incrementCurr = true;
 	}
 	return removed;
 }
@@ -240,6 +259,7 @@ int main()
 	x.insert("hmm.exe", "pfft.exe", "m52902");
 	x.insert("hmm.exe", "pfft.exe", "m10001");
 	x.insert("blah.exe", "bletch.exe", "m0003");
+	x.erase("hmm.exe", "pfft.exe", "m52902");
 	DiskMultiMap::Iterator it = x.search("hmm.exe");
 	if (it.isValid())
 	{
@@ -254,4 +274,5 @@ int main()
 			++it; // advance iterator to the next matching item
 		} while (it.isValid());
 	}
+	cout << "khk" << endl;
 }
