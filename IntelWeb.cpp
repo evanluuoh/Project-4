@@ -82,20 +82,24 @@ bool IntelWeb::ingest(const std::string& telemetryFile)
 		forwardMap.insert(key, value, context);
 		reverseMap.insert(value, key, context);
 
-		map<string, int>::iterator it1 = PrevalenceMap.find(key);  //update the PrevalenceMap for the key and value strings
-		if (it1 == PrevalenceMap.end())
-			PrevalenceMap[it1->first] = 0;
-		PrevalenceMap[it1->first]++;
-		map<string, int>::iterator it2 = PrevalenceMap.find(value);
-		if (it1 == PrevalenceMap.end())
-			PrevalenceMap[it1->first] = 0;
-		PrevalenceMap[it1->first]++;
+		PrevalenceMap.insert(std::pair<string, int>(key, 0));
+		PrevalenceMap.insert(std::pair<string, int>(value, 0));
+		PrevalenceMap[key]++;
+		PrevalenceMap[value]++;
 
 		InteractionTuple currTuple;
 		currTuple.context = context;
 		currTuple.from = key;
 		currTuple.to = value;
 		InteractionSet.insert(currTuple);
+	}
+	set<InteractionTuple>::iterator it3;
+	for (it3 = InteractionSet.begin(); it3 != InteractionSet.end(); ++it3)
+	{
+		InteractionTuple t = *it3;
+		cout << t.context << endl;
+		cout << t.from << endl;
+		cout << t.to << endl;
 	}
 	return true;
 }
@@ -106,6 +110,8 @@ unsigned int IntelWeb::crawl(const std::vector<std::string>& indicators,
 	std::vector<InteractionTuple>& badInteractions
 	)
 {
+	cout << InteractionSet.size() << endl;
+	cout << "a" << endl;
 	std::queue<string> toSearch;
 
 	for (int i = 0; i < indicators.size(); i++)  //take all the known bad entities and push them into a queue toSearch
@@ -113,52 +119,88 @@ unsigned int IntelWeb::crawl(const std::vector<std::string>& indicators,
 		toSearch.push(indicators[i]);
 		allBadEntities.insert(indicators[i]);  //also insert them into allBadEntities
 	}
+	cout << "b" << endl;
 
 	while (!toSearch.empty())  //while toSearch contains strings
 	{
+		cout << "c" << endl;
 		string searchingFor = toSearch.front();
 		toSearch.pop();
+		cout << "D" << endl;
 		findInteractions(searchingFor);  //map the set of entities that interact with toSearch.front
 		set<string>::iterator it;  //search through every interactor entity
 		it = InteractionMap[searchingFor].begin();
+		cout << "e" << endl;
 
 		while (it != InteractionMap[searchingFor].end())
 		{
+			cout << "f" << endl;
 			string interactedWith = *it;
 			findInteractions(interactedWith);  //map every interactor's own set of entities it interacts with to it in InteractionMap
+			cout << "g" << endl;
 			set<string> interactors = InteractionMap[interactedWith];  //gets the set of interactors for that entity
+			cout << "h" << endl;
 			if (PrevalenceMap[interactedWith] < minPrevalenceToBeGood)  //if that interactor has a prevalence less than the prevalence threshold, it is malicious
 			{
-				set<string>::iterator begin, end, iter;
-				begin = allBadEntities.begin();
-				end = allBadEntities.end();
+				cout << "i" << endl;
+				vector<string>::iterator begin, end, iter;
+				begin = badEntitiesFound.begin();
+				end = badEntitiesFound.end();
 				iter = find(begin, end, interactedWith);  //look for the interactor in badEntitiesFound to check if it has already been found
+
+				set<string>::iterator begin2, end2, iter2;
+				begin2 = allBadEntities.begin();
+				end2 = allBadEntities.end();
+				iter2 = find(begin2, end2, interactedWith);
 				
-				if (iter == end)  //if it has not been found already
+				if (iter2 == end2)  //if not found in allBadEntities, meaning never discovered before
 				{
 					badEntitiesFound.push_back(interactedWith);  //add it to badEntitiesFound
 					allBadEntities.insert(interactedWith);  //add it to allBadEntities
 					toSearch.push(interactedWith);  //add it to the toSearch queue
 				}
+				else if (iter == end)  //else, if found in allBadEntities but not badEntitiesFound
+				{
+					cout << "j" << endl;
+					badEntitiesFound.push_back(interactedWith);  //add it to badEntitiesFound
+				}
 			}
+			it++;
 		}
 	}
+	cout << "k" << endl;
 	//after searching through all the entities, time to search through all the interactions
 	set<InteractionTuple>::iterator it;
 	set<string>::iterator it2;
-	it = InteractionSet.begin();
-	it2 = allBadEntities.begin();
-	for (int i = 0; i < allBadEntities.size(); i++)
+	cout << "afasFEFAFF" << endl;
+
+	cout << "KKK" << endl;
+	for (it = InteractionSet.begin(); it != InteractionSet.end(); ++it)
 	{
-		InteractionTuple currTuple = *it;
-		string toSearch = *it2;
-		
-		if (currTuple.from == toSearch || currTuple.to == toSearch);
+		cout << "alskejfla" << endl;
+		for (it2 = allBadEntities.begin(); it2 != allBadEntities.end(); ++it2)
 		{
-			badInteractions.push_back(currTuple);
+			cout << "ALEKFJA" << endl;
+			InteractionTuple currTuple = *it;
+			string toSearch = *it2;
+
+			cout << "l" << endl;
+			if (currTuple.from == toSearch || currTuple.to == toSearch);
+			{
+				badInteractions.push_back(currTuple);
+				cout << "m" << endl;
+			}
 		}
 	}
-	return badEntitiesFound.size();
+	vector<InteractionTuple>::iterator it3;
+	for (it3 = badInteractions.begin(); it3 != badInteractions.end(); ++it3)
+	{
+		InteractionTuple t = *it3;
+		cout << t.context << endl;
+		cout << t.from << endl;
+		cout << t.to << endl;
+	}
+	return allBadEntities.size();
 }
 
 bool IntelWeb::purge(const std::string& entity)
@@ -174,6 +216,7 @@ bool IntelWeb::purge(const std::string& entity)
 		bool fsuccess = forwardMap.erase(fTuple.key, fTuple.value, fTuple.context);
 		if (fsuccess)
 			result = true;
+		++forwardIt;
 	}
 	while (reverseIt.isValid())
 	{
@@ -181,6 +224,7 @@ bool IntelWeb::purge(const std::string& entity)
 		bool rsuccess = reverseMap.erase(rTuple.key, rTuple.value, rTuple.context);
 		if (rsuccess)
 			result = true;
+		++reverseIt;
 	}
 	return result;
 }
