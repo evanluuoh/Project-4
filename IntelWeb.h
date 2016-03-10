@@ -30,6 +30,8 @@ private:
 	DiskMultiMap reverseMap;
 	map<string, set<string>> InteractionMap;
 	map<string, int> PrevalenceMap;
+	set<InteractionTuple> InteractionSet;
+	set<string> allBadEntities;
 	
 	void findInteractions(std::string toSearch);
 	int findPrevalences(std::string toSearch);
